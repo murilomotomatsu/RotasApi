@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from utils import gerar_csv_rota, gerar_imagem_rota, gerar_link_google_maps
 from pathlib import Path
@@ -8,7 +9,20 @@ import os
 
 app = FastAPI()
 
-# Criar diretório static se não existir
+# CORS LIBERADO PARA LOCALHOST E GITHUB
+origins = [
+    "http://localhost:5173",
+    "https://muritocg.github.io"
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"]
+)
+
 os.makedirs("static", exist_ok=True)
 
 class RotaInput(BaseModel):
