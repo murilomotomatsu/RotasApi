@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
+import Maps from './assets/maps.svg'
+import Sheets from './assets/sheets.svg'
 import './App.css'
 
 export default function App() {
@@ -13,7 +15,7 @@ export default function App() {
   const startFakeProgress = () => {
     let current = 0;
     progressInterval.current = setInterval(() => {
-      current += current < 30 ? 2 : current < 70 ? 1 : 0.5;
+      current += current < 30 ? 1.5 : current < 70 ? 1 : 0.5;
       if (current >= 99) {
         current = 99;
         clearInterval(progressInterval.current);
@@ -24,7 +26,7 @@ export default function App() {
 
   const stopFakeProgress = () => {
     clearInterval(progressInterval.current);
-    setProgress(100);
+    setProgress(1500);
     setTimeout(() => setProgress(0), 1000);
   };
 
@@ -38,7 +40,7 @@ export default function App() {
 
     try {
       const { data } = await axios.post('https://rotasapi-dfed.onrender.com/rota', {
-        lat_lon: parseFloat(lat),
+        lat_lon: lat.trim(),
         raio_metros: parseFloat(raio)
       });
       setResposta(data);
@@ -76,12 +78,16 @@ export default function App() {
           <img
             src={`https://rotasapi-dfed.onrender.com${resposta.image_url}`}
             alt="Rota"
-            style={{ maxWidth: '100%', borderRadius: '8px', marginBottom: '1rem' }}
+            style={{ maxWidth: '100%', borderRadius: '8px', margin: '1rem' }}
           />
-          <a href={`https://rotasapi-dfed.onrender.com${resposta.csv_url}`} target="_blank" rel="noopener noreferrer" >Baixar CSV</a>
+          <a href={`https://rotasapi-dfed.onrender.com${resposta.csv_url}`} target="_blank" rel="noopener noreferrer" >
+          Baixar CSV
+          <img src={Sheets} alt="Maps" style={{width:'10%', margin:'10px 10px -3%'}}/>
+          </a>
           {resposta.google_maps_urls.map((link, i) => (
-            <a key={i} href={link} target="_blank" rel="noopener noreferrer" className="text-blue-700 underline block">
-              Abrir trecho {i + 1} no Google Maps
+            <a key={i} href={link} target="_blank" rel="noopener noreferrer" >
+               Trecho {i + 1} no Google Maps
+               <img src={Maps} alt="Maps" style={{width:'10%', margin:'10px 10px -3%'}}/>
             </a>
           ))}
         </div>
