@@ -12,8 +12,10 @@ app = FastAPI()
 
 origins = [
     "http://localhost:5173",
-    "https://murilomotomatsu.github.io/RotasApi/"
+    "https://murilomotomatsu.github.io",
+    "https://murilomotomatsu.github.io/RotasApi",
 ]
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -26,8 +28,7 @@ app.add_middleware(
 os.makedirs("static", exist_ok=True)
 
 class RotaInput(BaseModel):
-    lat: float
-    lon: float
+    lat_lon: float
     raio_metros: float
 
 @app.post("/rota")
@@ -37,7 +38,7 @@ async def rota(data: RotaInput):
     os.makedirs(pasta_saida, exist_ok=True)
 
     try:
-        resultado = gerar_rota_cpp(data.lat, data.lon, data.raio_metros, pasta_saida)
+        resultado = gerar_rota_cpp(data.lat_lon, data.raio_metros, pasta_saida)
         return JSONResponse({
             "csv_url": f"/{resultado['csv']}",
             "image_url": f"/{resultado['image']}",

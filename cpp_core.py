@@ -58,8 +58,8 @@ def chinese_postman_path(G, weight='weight'):
 
     return list(nx.eulerian_circuit(G_aug))
 
-def gerar_rota_cpp(lat, lon, raio_metros, pasta_saida):
-    centro = (lat, lon)
+def gerar_rota_cpp(lat_lon, raio_metros, pasta_saida):
+    centro = (lat_lon)
     os.makedirs(pasta_saida, exist_ok=True)
 
     filtro = (
