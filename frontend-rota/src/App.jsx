@@ -29,6 +29,7 @@ export default function App() {
   };
 
   const handleSubmit = async (e) => {
+    console.log(lat)
     e.preventDefault();
     setLoading(true);
     setResposta(null);
@@ -55,7 +56,7 @@ export default function App() {
     <main>
       <h1 className="h1">TechRoutes</h1>
       <form onSubmit={handleSubmit} className="flex">
-        <input type="number" step="any" value={lat} onChange={(e) => setLat(e.target.value)} placeholder="Latitude, longitude" required />
+        <input type="any" step="any" value={lat} onChange={(e) => setLat(e.target.value)} placeholder="Latitude, longitude" required />
         <input type="number" step="any" value={raio} onChange={(e) => setRaio(e.target.value)} placeholder="Raio em metros" required />
         <button type="submit">Consultar</button>
       </form>

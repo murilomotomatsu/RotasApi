@@ -38,6 +38,7 @@ async def rota(data: RotaInput):
     os.makedirs(pasta_saida, exist_ok=True)
 
     try:
+        print(data.lat_lon)
         lat, lon = map(float, data.lat_lon.split(','))
         resultado = gerar_rota_cpp((lat, lon), data.raio_metros, pasta_saida)
         return JSONResponse({
