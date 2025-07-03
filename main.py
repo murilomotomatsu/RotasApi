@@ -1,18 +1,18 @@
+# main.py
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from utils import gerar_csv_rota, gerar_imagem_rota, gerar_link_google_maps
+from cpp_core import gerar_rota_cpp
 from pathlib import Path
 import uuid
 import os
 
 app = FastAPI()
 
-# CORS LIBERADO PARA LOCALHOST E GITHUB
 origins = [
     "http://localhost:5173",
-    "https://muritocg.github.io"
+    "https://murilomotomatsu.github.io/RotasApi/"
 ]
 
 app.add_middleware(
@@ -28,23 +28,24 @@ os.makedirs("static", exist_ok=True)
 class RotaInput(BaseModel):
     lat: float
     lon: float
-    raio_km: float
+    raio_metros: float
 
 @app.post("/rota")
 async def rota(data: RotaInput):
     uid = str(uuid.uuid4())
-    imagem_path = f"static/mapa_{uid}.png"
-    csv_path = f"static/rota_{uid}.csv"
+    pasta_saida = f"static/rota_{uid}"
+    os.makedirs(pasta_saida, exist_ok=True)
 
-    pontos = gerar_csv_rota(data.lat, data.lon, data.raio_km, csv_path)
-    gerar_imagem_rota(pontos, imagem_path)
-    google_maps_url = gerar_link_google_maps(pontos)
-
-    return JSONResponse({
-        "image_url": f"/{imagem_path}",
-        "csv_url": f"/{csv_path}",
-        "google_maps_url": google_maps_url
-    })
+    try:
+        resultado = gerar_rota_cpp(data.lat, data.lon, data.raio_metros, pasta_saida)
+        return JSONResponse({
+            "csv_url": f"/{resultado['csv']}",
+            "image_url": f"/{resultado['image']}",
+            "kmz_url": f"/{resultado['kmz']}",
+            "google_maps_urls": resultado['links']
+        })
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 @app.get("/static/{file_path:path}")
 async def serve_static(file_path: str):
