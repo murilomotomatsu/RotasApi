@@ -1,5 +1,11 @@
 fastapi
 uvicorn
-geopy
+osmnx
+networkx
+simplekml
 matplotlib
+contextily
+geopandas[all]
+shapely
+geopy
 pydantic
