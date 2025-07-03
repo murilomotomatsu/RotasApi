@@ -28,7 +28,7 @@ app.add_middleware(
 os.makedirs("static", exist_ok=True)
 
 class RotaInput(BaseModel):
-    lat_lon: float
+    lat_lon: str
     raio_metros: float
 
 @app.post("/rota")
@@ -38,7 +38,8 @@ async def rota(data: RotaInput):
     os.makedirs(pasta_saida, exist_ok=True)
 
     try:
-        resultado = gerar_rota_cpp(data.lat_lon, data.raio_metros, pasta_saida)
+        lat, lon = map(float, data.lat_lon.split(','))
+        resultado = gerar_rota_cpp((lat, lon), data.raio_metros, pasta_saida)
         return JSONResponse({
             "csv_url": f"/{resultado['csv']}",
             "image_url": f"/{resultado['image']}",
