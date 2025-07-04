@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import Maps from './assets/maps.svg'
 import Sheets from './assets/sheets.svg'
+import Kmz from './assets/kmz.svg'
 import './App.css'
 
 export default function App() {
@@ -15,18 +16,18 @@ export default function App() {
   const startFakeProgress = () => {
     let current = 0;
     progressInterval.current = setInterval(() => {
-      current += current < 30 ? 1.5 : current < 70 ? 1 : 0.5;
+      current += current < 30 ? 0.3 : current < 70 ? 0.05 : 0.01;
       if (current >= 99) {
         current = 99;
         clearInterval(progressInterval.current);
       }
       setProgress(current);
-    }, current < 30 ? 100 : current < 70 ? 300 : 1000);
+    }, current < 30 ? 100 : current < 70 ? 500000 : 100000);
   };
 
   const stopFakeProgress = () => {
     clearInterval(progressInterval.current);
-    setProgress(1500);
+    setProgress(100);
     setTimeout(() => setProgress(0), 1000);
   };
 
@@ -60,7 +61,7 @@ export default function App() {
       <form onSubmit={handleSubmit} className="flex">
         <input type="any" step="any" value={lat} onChange={(e) => setLat(e.target.value)} placeholder="Latitude, longitude" required />
         <input type="number" step="any" value={raio} onChange={(e) => setRaio(e.target.value)} placeholder="Raio em metros" required />
-        <button type="submit">Consultar</button>
+        <button type="submit">Gerar Rota</button>
       </form>
 
       {loading && (
@@ -68,8 +69,8 @@ export default function App() {
           <div
             className="Loading-Bar-Progress"
             style={{ width: `${progress}%` }}
-          />
-          <p>Carregando... {Math.floor(progress)}%</p>
+            />
+            <p>Carregando..`${progress}%`</p>
         </div>
       )}
 
@@ -84,9 +85,13 @@ export default function App() {
           Baixar CSV
           <img src={Sheets} alt="Maps" style={{width:'10%', margin:'10px 10px -3%'}}/>
           </a>
+          <a href={`https://rotasapi-dfed.onrender.com${resposta.kmz_url}`} target="_blank" rel="noopener noreferrer" >
+          Baixar KMZ
+          <img src={Kmz} alt="Maps" style={{width:'10%', margin:'10px 10px -3%'}}/>
+          </a>
           {resposta.google_maps_urls.map((link, i) => (
             <a key={i} href={link} target="_blank" rel="noopener noreferrer" >
-               Trecho {i + 1} no Google Maps
+               Trecho {i + 1}
                <img src={Maps} alt="Maps" style={{width:'10%', margin:'10px 10px -3%'}}/>
             </a>
           ))}
