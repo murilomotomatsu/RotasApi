@@ -3,6 +3,9 @@ import axios from 'axios';
 import Maps from './assets/maps.svg'
 import Sheets from './assets/sheets.svg'
 import Kmz from './assets/kmz.svg'
+import MapaComRota from './MapRouter';
+import { messaging, getToken, onMessage } from './firebase';
+
 import './App.css'
 
 export default function App() {
@@ -12,6 +15,31 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const progressInterval = useRef(null);
+
+
+  useEffect(() => {
+    onMessage(messaging, (payload) => {
+      alert(payload.notification?.title + '\\n' + payload.notification?.body);
+    });
+
+    navigator.serviceWorker
+      .register('/firebase-messaging-sw.js')
+      .then((registration) => {
+        getToken(messaging, {
+          vapidKey: 'BEb8lSDu8z9f_ejV670IU_9gl9m7RpSKMwei-A1J9m4juMgj9gxzujJxM1PycsJxeMXJNph6CVzlKy61Q88YbKs',
+          serviceWorkerRegistration: registration
+        }).then((currentToken) => {
+          if (currentToken) {
+            // Enviar para backend
+            localStorage.setItem('fcm_token', currentToken);
+            console.log('Token FCM:', currentToken);
+          } else {
+            console.warn('Nenhum token disponível');
+          }
+        });
+      });
+  }, []);
+
 
   const startFakeProgress = () => {
     let current = 0;
@@ -69,8 +97,8 @@ export default function App() {
           <div
             className="Loading-Bar-Progress"
             style={{ width: `${progress}%` }}
-            />
-            <p>Carregando..`${progress}%`</p>
+          />
+          <p>Carregando..`${progress}%`</p>
         </div>
       )}
 
@@ -79,20 +107,23 @@ export default function App() {
           <img
             src={`https://rotasapi-dfed.onrender.com${resposta.image_url}`}
             alt="Rota"
-            style={{ maxWidth: '100%', borderRadius: '8px', margin: '1rem' }}
+            style={{ maxWidth: '100%', height: '20%', borderRadius: '8px', margin: '1rem' }}
           />
           <a href={`https://rotasapi-dfed.onrender.com${resposta.csv_url}`} target="_blank" rel="noopener noreferrer" >
-          Baixar CSV
-          <img src={Sheets} alt="Maps" style={{width:'10%', margin:'10px 10px -3%'}}/>
+            Baixar CSV
+            <img src={Sheets} alt="Maps" style={{ width: '10%', margin: '10px 10px -3%' }} />
           </a>
           <a href={`https://rotasapi-dfed.onrender.com${resposta.kmz_url}`} target="_blank" rel="noopener noreferrer" >
-          Baixar KMZ
-          <img src={Kmz} alt="Maps" style={{width:'10%', margin:'10px 10px -3%'}}/>
+            Baixar KMZ
+            <img src={Kmz} alt="Maps" style={{ width: '10%', margin: '10px 10px -3%' }} />
           </a>
+          {resposta?.kmz_url && (
+            <MapaComRota kmzUrl={`https://rotasapi-dfed.onrender.com${resposta.kmz_url}`} />
+          )}
           {resposta.google_maps_urls.map((link, i) => (
             <a key={i} href={link} target="_blank" rel="noopener noreferrer" >
-               Trecho {i + 1}
-               <img src={Maps} alt="Maps" style={{width:'10%', margin:'10px 10px -3%'}}/>
+              Trecho {i + 1}
+              <img src={Maps} alt="Maps" style={{ width: '10%', margin: '10px 10px -3%' }} />
             </a>
           ))}
         </div>
