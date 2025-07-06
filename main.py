@@ -1,6 +1,5 @@
-# main.py
 from fastapi import FastAPI, BackgroundTasks
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from cpp_core import gerar_rota_cpp
@@ -79,6 +78,14 @@ def processar_rota(uid: str, data: RotaInput):
 
     except Exception as e:
         jobs[uid].update({"status": "erro", "erro": str(e)})
+
+@app.options("/rota")
+async def preflight_rota():
+    return Response(status_code=204, headers={
+        "Access-Control-Allow-Origin": "https://murilomotomatsu.github.io",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "*"
+    })
 
 @app.post("/rota")
 async def rota(data: RotaInput, background_tasks: BackgroundTasks):
