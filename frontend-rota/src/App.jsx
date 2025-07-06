@@ -17,6 +17,12 @@ export default function App() {
   const progressInterval = useRef(null);
 
 
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/firebase-messaging-sw.js');
+    });
+  }
+
   useEffect(() => {
     onMessage(messaging, (payload) => {
       alert(payload.notification?.title + '\\n' + payload.notification?.body);
