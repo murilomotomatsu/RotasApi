@@ -1,5 +1,5 @@
 # main.py
-from fastapi import FastAPI, BackgroundTasks, Request
+from fastapi import FastAPI, BackgroundTasks
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -7,13 +7,10 @@ from cpp_core import gerar_rota_cpp
 from pathlib import Path
 import uuid
 import os
-import firebase_admin
-from firebase_admin import messaging, credentials
+import requests
 from typing import Dict
 
-# Inicializa Firebase
-cred = credentials.Certificate("firebase-adminsdk.json")
-firebase_admin.initialize_app(cred)
+FCM_SERVER_KEY = "BEb8lSDu8z9f_ejV670IU_9gl9m7RpSKMwei-A1J9m4juMgj9gxzujJxM1PycsJxeMXJNph6CVzlKy61Q88YbKs"
 
 app = FastAPI()
 
@@ -33,7 +30,6 @@ app.add_middleware(
 
 os.makedirs("static", exist_ok=True)
 
-# Armazena jobs em memória
 jobs: Dict[str, Dict] = {}
 
 class RotaInput(BaseModel):
@@ -41,6 +37,24 @@ class RotaInput(BaseModel):
     raio_metros: float
     fcm_token: str = None
     user_id: str = None
+
+def enviar_notificacao_fcm(token: str, job_id: str):
+    headers = {
+        "Authorization": f"key={FCM_SERVER_KEY}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "to": token,
+        "notification": {
+            "title": "Rota finalizada!",
+            "body": "Seu trajeto solicitado já está pronto."
+        },
+        "data": {
+            "job_id": job_id
+        }
+    }
+    response = requests.post("https://fcm.googleapis.com/fcm/send", json=payload, headers=headers)
+    print("FCM status:", response.status_code, response.text)
 
 def processar_rota(uid: str, data: RotaInput):
     pasta_saida = f"static/rota_{uid}"
@@ -50,7 +64,6 @@ def processar_rota(uid: str, data: RotaInput):
         lat, lon = map(float, data.lat_lon.split(','))
         resultado = gerar_rota_cpp((lat, lon), data.raio_metros, pasta_saida)
 
-        # Atualiza job
         jobs[uid].update({
             "status": "completo",
             "resultado": {
@@ -61,16 +74,8 @@ def processar_rota(uid: str, data: RotaInput):
             }
         })
 
-        # Envia notificação push
         if data.fcm_token:
-            messaging.send(messaging.Message(
-                token=data.fcm_token,
-                notification=messaging.Notification(
-                    title="Rota finalizada!",
-                    body=f"Seu trajeto solicitado já está pronto.",
-                ),
-                data={"job_id": uid}
-            ))
+            enviar_notificacao_fcm(data.fcm_token, uid)
 
     except Exception as e:
         jobs[uid].update({"status": "erro", "erro": str(e)})
@@ -78,14 +83,11 @@ def processar_rota(uid: str, data: RotaInput):
 @app.post("/rota")
 async def rota(data: RotaInput, background_tasks: BackgroundTasks):
     uid = str(uuid.uuid4())
-
-    # Salva job inicial
     jobs[uid] = {
         "status": "em_andamento",
         "fcm_token": data.fcm_token,
         "user_id": data.user_id
     }
-
     background_tasks.add_task(processar_rota, uid, data)
     return {"job_id": uid}
 
