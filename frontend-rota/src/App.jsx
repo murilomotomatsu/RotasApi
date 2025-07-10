@@ -1,12 +1,12 @@
+// App.jsx
 import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
-import Maps from './assets/maps.svg'
-import Sheets from './assets/sheets.svg'
-import Kmz from './assets/kmz.svg'
+import Maps from './assets/maps.svg';
+import Sheets from './assets/sheets.svg';
+import Kmz from './assets/kmz.svg';
 import MapaComRota from './MapRouter';
 import { messaging, getToken, onMessage } from './firebase';
-
-import './App.css'
+import './App.css';
 
 export default function App() {
   const [lat, setLat] = useState('');
@@ -15,36 +15,32 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const progressInterval = useRef(null);
-
-
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/firebase-messaging-sw.js');
-    });
-  }
+  const hasRegisteredRef = useRef(false);
 
   useEffect(() => {
+    if (hasRegisteredRef.current) return;
+    hasRegisteredRef.current = true;
+
     onMessage(messaging, (payload) => {
-      alert(payload.notification?.title + '\\n' + payload.notification?.body);
+      alert(payload.notification?.title + '\n' + payload.notification?.body);
     });
 
-    navigator.serviceWorker
-      .register('/firebase-messaging-sw.js')
-      .then((registration) => {
-        getToken(messaging, {
-          vapidKey: 'BEb8lSDu8z9f_ejV670IU_9gl9m7RpSKMwei-A1J9m4juMgj9gxzujJxM1PycsJxeMXJNph6CVzlKy61Q88YbKs',
-          serviceWorkerRegistration: registration
-        }).then((currentToken) => {
-          if (currentToken) {
-            // Enviar para backend
-            localStorage.setItem('fcm_token', currentToken);
-            console.log('Token FCM:', currentToken);
-          } else {
-            console.warn('Nenhum token disponível');
-          }
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register(`${import.meta.env.BASE_URL}firebase-messaging-sw.js`)
+        .then((registration) => {
+          getToken(messaging, {
+            vapidKey: 'BEb8lSDu8z9f_ejV670IU_9gl9m7RpSKMwei-A1J9m4juMgj9gxzujJxM1PycsJxeMXJNph6CVzlKy61Q88YbKs',
+            serviceWorkerRegistration: registration
+          }).then((currentToken) => {
+            if (currentToken) {
+              localStorage.setItem('fcm_token', currentToken);
+            } else {
+              console.warn('Nenhum token disponível');
+            }
+          });
         });
-      });
-  }, []);
+    }
+  }, []); 
 
 
   const startFakeProgress = () => {
@@ -56,7 +52,7 @@ export default function App() {
         clearInterval(progressInterval.current);
       }
       setProgress(current);
-    }, current < 30 ? 100 : current < 70 ? 500000 : 100000);
+    }, 200);
   };
 
   const stopFakeProgress = () => {
@@ -66,7 +62,6 @@ export default function App() {
   };
 
   const handleSubmit = async (e) => {
-    console.log(lat)
     e.preventDefault();
     setLoading(true);
     setResposta(null);
@@ -74,41 +69,57 @@ export default function App() {
     startFakeProgress();
 
     try {
+      const lat_lon = lat.replace(/\s+/g, '');
+      const token = localStorage.getItem('fcm_token');
+
       const { data } = await axios.post('https://rotasapi-dfed.onrender.com/rota', {
-        lat_lon: lat.trim(),
-        raio_metros: parseFloat(raio)
+        lat_lon,
+        raio_metros: parseFloat(raio),
+        fcm_token: token
       });
-      setResposta(data);
+      const { job_id } = data;
+      pollJob(job_id);
     } catch (error) {
-      alert('Erro ao obter rota');
-    } finally {
+      alert('Erro ao iniciar geração de rota');
       stopFakeProgress();
       setLoading(false);
     }
   };
 
-
+  const pollJob = (jobId) => {
+    const interval = setInterval(async () => {
+      const { data } = await axios.get(`https://rotasapi-dfed.onrender.com/rota/${jobId}`);
+      if (data.status === 'completo') {
+        clearInterval(interval);
+        setResposta(data);
+        stopFakeProgress();
+        setLoading(false);
+      } else if (data.status === 'erro') {
+        clearInterval(interval);
+        alert('Erro ao gerar rota: ' + data.erro);
+        stopFakeProgress();
+        setLoading(false);
+      }
+    }, 2000);
+  };
 
   return (
     <main>
       <h1 className="h1">TechRoutes</h1>
       <form onSubmit={handleSubmit} className="flex">
-        <input type="any" step="any" value={lat} onChange={(e) => setLat(e.target.value)} placeholder="Latitude, longitude" required />
+        <input type="text" step="any" value={lat} onChange={(e) => setLat(e.target.value)} placeholder="Latitude, longitude" required />
         <input type="number" step="any" value={raio} onChange={(e) => setRaio(e.target.value)} placeholder="Raio em metros" required />
         <button type="submit">Gerar Rota</button>
       </form>
 
       {loading && (
         <div className="Loading-Bar">
-          <div
-            className="Loading-Bar-Progress"
-            style={{ width: `${progress}%` }}
-          />
-          <p>Carregando..`${progress}%`</p>
+          <div className="Loading-Bar-Progress" style={{ width: `${progress}%` }} />
+          <p>Carregando... {Math.floor(progress)}%</p>
         </div>
       )}
 
-      {resposta && (
+      {resposta && resposta.status === 'completo' && (
         <div className="flex">
           <img
             src={`https://rotasapi-dfed.onrender.com${resposta.image_url}`}
@@ -117,16 +128,16 @@ export default function App() {
           />
           <a href={`https://rotasapi-dfed.onrender.com${resposta.csv_url}`} target="_blank" rel="noopener noreferrer" >
             Baixar CSV
-            <img src={Sheets} alt="Maps" style={{ width: '10%', margin: '10px 10px -3%' }} />
+            <img src={Sheets} alt="Sheets" style={{ width: '10%', margin: '10px 10px -3%' }} />
           </a>
           <a href={`https://rotasapi-dfed.onrender.com${resposta.kmz_url}`} target="_blank" rel="noopener noreferrer" >
             Baixar KMZ
-            <img src={Kmz} alt="Maps" style={{ width: '10%', margin: '10px 10px -3%' }} />
+            <img src={Kmz} alt="KMZ" style={{ width: '10%', margin: '10px 10px -3%' }} />
           </a>
-          {resposta?.kmz_url && (
+          {resposta.kmz_url && (
             <MapaComRota kmzUrl={`https://rotasapi-dfed.onrender.com${resposta.kmz_url}`} />
           )}
-          {resposta.google_maps_urls.map((link, i) => (
+          {resposta.google_maps_urls?.map((link, i) => (
             <a key={i} href={link} target="_blank" rel="noopener noreferrer" >
               Trecho {i + 1}
               <img src={Maps} alt="Maps" style={{ width: '10%', margin: '10px 10px -3%' }} />

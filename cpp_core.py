@@ -11,6 +11,7 @@ from geopy.geocoders import Nominatim
 import os
 import itertools
 from time import sleep
+from networkx.algorithms.approximation import traveling_salesman_problem
 
 ox.settings.log_console = False
 
@@ -31,32 +32,10 @@ def remove_dead_ends(graph):
         G.remove_nodes_from(dead_ends)
     return G
 
-def chinese_postman_path(G, weight='weight'):
+def tsp_path(G, weight='weight'):
     if not nx.is_connected(G):
         raise nx.NetworkXError("O grafo deve ser conexo")
-
-    odd_nodes = [v for v, d in G.degree() if d % 2 == 1]
-    if not odd_nodes:
-        return list(nx.eulerian_circuit(G))
-
-    G_odd = nx.Graph()
-    for u, v in itertools.combinations(odd_nodes, 2):
-        dist = nx.dijkstra_path_length(G, u, v, weight=weight)
-        G_odd.add_edge(u, v, weight=-dist)
-
-    matching = nx.algorithms.matching.max_weight_matching(G_odd, maxcardinality=True, weight='weight')
-
-    G_aug = nx.MultiGraph(G)
-    for u, v in matching:
-        path = nx.shortest_path(G, u, v, weight=weight)
-        for i in range(len(path) - 1):
-            a, b = path[i], path[i+1]
-            data = G.get_edge_data(a, b)
-            if isinstance(data, dict) and 0 in data:
-                data = data[0]
-            G_aug.add_edge(a, b, **data)
-
-    return list(nx.eulerian_circuit(G_aug))
+    return traveling_salesman_problem(G, weight=weight, cycle=True)
 
 def gerar_rota_cpp(lat_lon, raio_metros, pasta_saida):
     centro = (lat_lon)
@@ -81,8 +60,8 @@ def gerar_rota_cpp(lat_lon, raio_metros, pasta_saida):
             G_undir.nodes[node]['x'] = G.nodes[node]['x']
             G_undir.nodes[node]['y'] = G.nodes[node]['y']
 
-    edges_cpp = chinese_postman_path(G_undir, weight="weight")
-    rota_nodes = [u for u, v in edges_cpp] + [edges_cpp[-1][1]]
+    rota_nodes = tsp_path(G_undir, weight="weight")
+    rota_nodes.append(rota_nodes[0])
 
     geolocator = Nominatim(user_agent="cpp_api")
     csv_path = os.path.join(pasta_saida, "rota.csv")
@@ -116,19 +95,14 @@ def gerar_rota_cpp(lat_lon, raio_metros, pasta_saida):
     plt.savefig(img_path, dpi=300)
     plt.close(fig)
 
-    pontos_gmaps = []
-    ant, acum = None, 0
-    for n in rota_nodes:
-        lon_pt = G_undir.nodes[n]['x']
-        lat_pt = G_undir.nodes[n]['y']
-        if ant:
-            dist = haversine(ant[1], ant[0], lat_pt, lon_pt)
-            acum += dist
-            if acum < 100:
-                continue
-        pontos_gmaps.append((lat_pt, lon_pt))
-        ant = (lon_pt, lat_pt)
-        acum = 0
+    coords_cpp = coords
+
+    final_coords = [coords_cpp[0]]
+    for pt in coords_cpp[1:]:
+        if pt != final_coords[-1]:
+            final_coords.append(pt)
+
+    pontos_gmaps = [(lat, lon) for lon, lat in final_coords]
 
     chunk_size = 25
     links = [
@@ -137,7 +111,10 @@ def gerar_rota_cpp(lat_lon, raio_metros, pasta_saida):
     ]
 
     kml = simplekml.Kml()
-    kml.newlinestring(name="Rota CPP", coords=[(lon, lat) for lat, lon in pontos_gmaps])
+    lin = kml.newlinestring(name="Rota CPP")
+    lin.coords = final_coords
+    lin.style.linestyle.width = 4
+    lin.style.linestyle.color = simplekml.Color.blue
     kml_path = os.path.join(pasta_saida, "rota_cpp.kmz")
     kml.savekmz(kml_path)
 
