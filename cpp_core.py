@@ -45,7 +45,7 @@ def chinese_postman_path_with_penalty(G, weight='weight'):
     G_odd = nx.Graph()
     for u, v in itertools.combinations(odd_nodes, 2):
         dist = nx.dijkstra_path_length(G, u, v, weight=weight)
-        penalty = dist + 0.1 * abs(u - v)  # pequena penalidade extra para evitar duplicatas frequentes
+        penalty = dist + 0.1 * abs(u - v)
         G_odd.add_edge(u, v, weight=-penalty)
 
     matching = nx.algorithms.matching.max_weight_matching(G_odd, maxcardinality=True, weight='weight')
@@ -71,13 +71,19 @@ def tsp_path_clustered(G, n_clusters=4, weight='weight'):
         clustered_nodes[label].append(list(G.nodes)[idx])
 
     final_path = []
-    for cluster_nodes in clustered_nodes.values():
+    for label, cluster_nodes in clustered_nodes.items():
         if len(cluster_nodes) <= 1:
             final_path.extend(cluster_nodes)
             continue
         subG = G.subgraph(cluster_nodes)
-        path = traveling_salesman_problem(subG, weight=weight, cycle=False)
-        final_path.extend(path)
+        if not nx.is_connected(subG):
+            continue  # ignora cluster desconexo
+        try:
+            path = traveling_salesman_problem(subG, weight=weight, cycle=False)
+            final_path.extend(path)
+        except Exception as e:
+            print(f"Erro no cluster {label}: {e}")
+            continue
 
     return final_path
 
@@ -86,9 +92,9 @@ def gerar_rota_cpp(lat_lon, raio_metros, pasta_saida):
     os.makedirs(pasta_saida, exist_ok=True)
 
     filtro = (
-        '["highway"!~"service|track|path|footway"]'
-        '["access"!~"private"]'
-        '["barrier"!~"wall|fence"]'
+        '"[highway"!~"service|track|path|footway"]'
+        '"[access"!~"private"]'
+        '"[barrier"!~"wall|fence"]'
     )
 
     G = ox.graph_from_point(centro, dist=raio_metros, network_type='drive', custom_filter=filtro, simplify=True)
@@ -104,7 +110,6 @@ def gerar_rota_cpp(lat_lon, raio_metros, pasta_saida):
             G_undir.nodes[node]['x'] = G.nodes[node]['x']
             G_undir.nodes[node]['y'] = G.nodes[node]['y']
 
-    # Rota com clustering + TSP para maior fluidez e menor sobreposição
     rota_nodes = tsp_path_clustered(G_undir, n_clusters=6, weight="weight")
 
     geolocator = Nominatim(user_agent="cpp_api")

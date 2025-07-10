@@ -24,6 +24,34 @@ function FlyToLocation({ center }) {
   return null;
 }
 
+function AddFullscreenControl() {
+  const map = useMap();
+  useEffect(() => {
+    const control = L.control.fullscreen();
+    map.addControl(control);
+    return () => map.removeControl(control);
+  }, [map]);
+  return null;
+}
+
+function ResetViewButton({ center }) {
+  const map = useMap();
+  useEffect(() => {
+    const control = L.control({ position: 'topleft' });
+    control.onAdd = function () {
+      const btn = L.DomUtil.create('button', 'leaflet-bar');
+      btn.innerHTML = 'Resetar';
+      btn.style.padding = '4px';
+      btn.style.cursor = 'pointer';
+      btn.onclick = () => map.setView(center, 15);
+      return btn;
+    };
+    control.addTo(map);
+    return () => control.remove();
+  }, [map, center]);
+  return null;
+}
+
 function smoothPolyline(coords) {
   const smooth = [];
   for (let i = 1; i < coords.length; i++) {
@@ -51,7 +79,7 @@ function DirectionArrows({ positions }) {
   useEffect(() => {
     if (!positions.length || !L?.Symbol?.arrowHead || !L?.polylineDecorator) return;
 
-    const segments = splitIntoSegments(positions, 4); // b. Dividir rota em 4 partes
+    const segments = splitIntoSegments(positions, 4);
     const decorators = [];
 
     segments.forEach((segment, i) => {
@@ -62,7 +90,7 @@ function DirectionArrows({ positions }) {
         patterns: [
           {
             offset: 12,
-            repeat: Math.max(10, 80 - zoomLevel * 5), // a. repeat dinâmico
+            repeat: Math.max(10, 80 - zoomLevel * 5),
             symbol: L.Symbol.arrowHead({
               pixelSize: 10,
               polygon: false,
@@ -92,8 +120,6 @@ function splitIntoSegments(arr, count) {
   }
   return segments;
 }
-
-
 
 export default function MapaComRota({ kmzUrl }) {
   const [userLocation, setUserLocation] = useState(null);
@@ -154,7 +180,7 @@ export default function MapaComRota({ kmzUrl }) {
         onClick={() => setTracking(prev => !prev)}
         style={{
           position: 'absolute',
-          top: 10,
+          bottom: 10,
           right: 10,
           zIndex: 1000,
           padding: '10px 15px',
@@ -165,7 +191,7 @@ export default function MapaComRota({ kmzUrl }) {
           cursor: 'pointer'
         }}
       >
-        {tracking ? 'Parar Gravação' : 'Iniciar Gravação'}
+        {tracking ? 'Parar' : 'Iniciar'}
       </button>
 
       {userLocation && (
@@ -173,8 +199,9 @@ export default function MapaComRota({ kmzUrl }) {
           center={userLocation}
           zoom={15}
           style={{ height: '100%', width: '100%' }}
-          fullscreenControl={true}
         >
+          <AddFullscreenControl />
+          <ResetViewButton center={userLocation} />
           <TileLayer
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             attribution="&copy; OpenStreetMap contributors"
