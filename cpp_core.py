@@ -12,6 +12,8 @@ import os
 import itertools
 from time import sleep
 from networkx.algorithms.approximation import traveling_salesman_problem
+from sklearn.cluster import KMeans
+import numpy as np
 
 ox.settings.log_console = False
 
@@ -32,10 +34,52 @@ def remove_dead_ends(graph):
         G.remove_nodes_from(dead_ends)
     return G
 
-def tsp_path(G, weight='weight'):
+def chinese_postman_path_with_penalty(G, weight='weight'):
     if not nx.is_connected(G):
         raise nx.NetworkXError("O grafo deve ser conexo")
-    return traveling_salesman_problem(G, weight=weight, cycle=True)
+
+    odd_nodes = [v for v, d in G.degree() if d % 2 == 1]
+    if not odd_nodes:
+        return list(nx.eulerian_circuit(G))
+
+    G_odd = nx.Graph()
+    for u, v in itertools.combinations(odd_nodes, 2):
+        dist = nx.dijkstra_path_length(G, u, v, weight=weight)
+        penalty = dist + 0.1 * abs(u - v)  # pequena penalidade extra para evitar duplicatas frequentes
+        G_odd.add_edge(u, v, weight=-penalty)
+
+    matching = nx.algorithms.matching.max_weight_matching(G_odd, maxcardinality=True, weight='weight')
+    G_aug = nx.MultiGraph(G)
+
+    for u, v in matching:
+        path = nx.shortest_path(G, u, v, weight=weight)
+        for i in range(len(path) - 1):
+            a, b = path[i], path[i + 1]
+            data = G.get_edge_data(a, b)
+            if isinstance(data, dict) and 0 in data:
+                data = data[0]
+            G_aug.add_edge(a, b, **data)
+
+    return list(nx.eulerian_circuit(G_aug))
+
+def tsp_path_clustered(G, n_clusters=4, weight='weight'):
+    coords = np.array([[G.nodes[n]['x'], G.nodes[n]['y']] for n in G.nodes])
+    kmeans = KMeans(n_clusters=min(n_clusters, len(G.nodes)), random_state=42).fit(coords)
+
+    clustered_nodes = {i: [] for i in range(n_clusters)}
+    for idx, label in enumerate(kmeans.labels_):
+        clustered_nodes[label].append(list(G.nodes)[idx])
+
+    final_path = []
+    for cluster_nodes in clustered_nodes.values():
+        if len(cluster_nodes) <= 1:
+            final_path.extend(cluster_nodes)
+            continue
+        subG = G.subgraph(cluster_nodes)
+        path = traveling_salesman_problem(subG, weight=weight, cycle=False)
+        final_path.extend(path)
+
+    return final_path
 
 def gerar_rota_cpp(lat_lon, raio_metros, pasta_saida):
     centro = (lat_lon)
@@ -47,7 +91,7 @@ def gerar_rota_cpp(lat_lon, raio_metros, pasta_saida):
         '["barrier"!~"wall|fence"]'
     )
 
-    G = ox.graph_from_point(centro, dist=raio_metros, network_type='drive', custom_filter=filtro)
+    G = ox.graph_from_point(centro, dist=raio_metros, network_type='drive', custom_filter=filtro, simplify=True)
     G = remove_dead_ends(G)
 
     G_undir = nx.Graph()
@@ -60,8 +104,8 @@ def gerar_rota_cpp(lat_lon, raio_metros, pasta_saida):
             G_undir.nodes[node]['x'] = G.nodes[node]['x']
             G_undir.nodes[node]['y'] = G.nodes[node]['y']
 
-    rota_nodes = tsp_path(G_undir, weight="weight")
-    rota_nodes.append(rota_nodes[0])
+    # Rota com clustering + TSP para maior fluidez e menor sobreposição
+    rota_nodes = tsp_path_clustered(G_undir, n_clusters=6, weight="weight")
 
     geolocator = Nominatim(user_agent="cpp_api")
     csv_path = os.path.join(pasta_saida, "rota.csv")
@@ -95,10 +139,8 @@ def gerar_rota_cpp(lat_lon, raio_metros, pasta_saida):
     plt.savefig(img_path, dpi=300)
     plt.close(fig)
 
-    coords_cpp = coords
-
-    final_coords = [coords_cpp[0]]
-    for pt in coords_cpp[1:]:
+    final_coords = [coords[0]]
+    for pt in coords[1:]:
         if pt != final_coords[-1]:
             final_coords.append(pt)
 
