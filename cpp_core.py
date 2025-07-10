@@ -11,9 +11,6 @@ from geopy.geocoders import Nominatim
 import os
 import itertools
 from time import sleep
-from networkx.algorithms.approximation import traveling_salesman_problem
-from sklearn.cluster import KMeans
-import numpy as np
 
 ox.settings.log_console = False
 
@@ -34,7 +31,7 @@ def remove_dead_ends(graph):
         G.remove_nodes_from(dead_ends)
     return G
 
-def chinese_postman_path_with_penalty(G, weight='weight'):
+def chinese_postman_path(G, weight='weight'):
     if not nx.is_connected(G):
         raise nx.NetworkXError("O grafo deve ser conexo")
 
@@ -45,16 +42,15 @@ def chinese_postman_path_with_penalty(G, weight='weight'):
     G_odd = nx.Graph()
     for u, v in itertools.combinations(odd_nodes, 2):
         dist = nx.dijkstra_path_length(G, u, v, weight=weight)
-        penalty = dist + 0.1 * abs(u - v)
-        G_odd.add_edge(u, v, weight=-penalty)
+        G_odd.add_edge(u, v, weight=-dist)
 
     matching = nx.algorithms.matching.max_weight_matching(G_odd, maxcardinality=True, weight='weight')
-    G_aug = nx.MultiGraph(G)
 
+    G_aug = nx.MultiGraph(G)
     for u, v in matching:
         path = nx.shortest_path(G, u, v, weight=weight)
         for i in range(len(path) - 1):
-            a, b = path[i], path[i + 1]
+            a, b = path[i], path[i+1]
             data = G.get_edge_data(a, b)
             if isinstance(data, dict) and 0 in data:
                 data = data[0]
@@ -62,42 +58,17 @@ def chinese_postman_path_with_penalty(G, weight='weight'):
 
     return list(nx.eulerian_circuit(G_aug))
 
-def tsp_path_clustered(G, n_clusters=4, weight='weight'):
-    coords = np.array([[G.nodes[n]['x'], G.nodes[n]['y']] for n in G.nodes])
-    kmeans = KMeans(n_clusters=min(n_clusters, len(G.nodes)), random_state=42).fit(coords)
-
-    clustered_nodes = {i: [] for i in range(n_clusters)}
-    for idx, label in enumerate(kmeans.labels_):
-        clustered_nodes[label].append(list(G.nodes)[idx])
-
-    final_path = []
-    for label, cluster_nodes in clustered_nodes.items():
-        if len(cluster_nodes) <= 1:
-            final_path.extend(cluster_nodes)
-            continue
-        subG = G.subgraph(cluster_nodes)
-        if not nx.is_connected(subG):
-            continue  # ignora cluster desconexo
-        try:
-            path = traveling_salesman_problem(subG, weight=weight, cycle=False)
-            final_path.extend(path)
-        except Exception as e:
-            print(f"Erro no cluster {label}: {e}")
-            continue
-
-    return final_path
-
 def gerar_rota_cpp(lat_lon, raio_metros, pasta_saida):
     centro = (lat_lon)
     os.makedirs(pasta_saida, exist_ok=True)
 
     filtro = (
-        '"[highway"!~"service|track|path|footway"]'
-        '"[access"!~"private"]'
-        '"[barrier"!~"wall|fence"]'
+        '["highway"!~"service|track|path|footway"]'
+        '["access"!~"private"]'
+        '["barrier"!~"wall|fence"]'
     )
 
-    G = ox.graph_from_point(centro, dist=raio_metros, network_type='drive', custom_filter=filtro, simplify=True)
+    G = ox.graph_from_point(centro, dist=raio_metros, network_type='drive', custom_filter=filtro)
     G = remove_dead_ends(G)
 
     G_undir = nx.Graph()
@@ -110,7 +81,8 @@ def gerar_rota_cpp(lat_lon, raio_metros, pasta_saida):
             G_undir.nodes[node]['x'] = G.nodes[node]['x']
             G_undir.nodes[node]['y'] = G.nodes[node]['y']
 
-    rota_nodes = tsp_path_clustered(G_undir, n_clusters=6, weight="weight")
+    edges_cpp = chinese_postman_path(G_undir, weight="weight")
+    rota_nodes = [u for u, v in edges_cpp] + [edges_cpp[-1][1]]
 
     geolocator = Nominatim(user_agent="cpp_api")
     csv_path = os.path.join(pasta_saida, "rota.csv")
@@ -144,12 +116,19 @@ def gerar_rota_cpp(lat_lon, raio_metros, pasta_saida):
     plt.savefig(img_path, dpi=300)
     plt.close(fig)
 
-    final_coords = [coords[0]]
-    for pt in coords[1:]:
-        if pt != final_coords[-1]:
-            final_coords.append(pt)
-
-    pontos_gmaps = [(lat, lon) for lon, lat in final_coords]
+    pontos_gmaps = []
+    ant, acum = None, 0
+    for n in rota_nodes:
+        lon_pt = G_undir.nodes[n]['x']
+        lat_pt = G_undir.nodes[n]['y']
+        if ant:
+            dist = haversine(ant[1], ant[0], lat_pt, lon_pt)
+            acum += dist
+            if acum < 100:
+                continue
+        pontos_gmaps.append((lat_pt, lon_pt))
+        ant = (lon_pt, lat_pt)
+        acum = 0
 
     chunk_size = 25
     links = [
@@ -158,10 +137,7 @@ def gerar_rota_cpp(lat_lon, raio_metros, pasta_saida):
     ]
 
     kml = simplekml.Kml()
-    lin = kml.newlinestring(name="Rota CPP")
-    lin.coords = final_coords
-    lin.style.linestyle.width = 4
-    lin.style.linestyle.color = simplekml.Color.blue
+    kml.newlinestring(name="Rota CPP", coords=[(lon, lat) for lat, lon in pontos_gmaps])
     kml_path = os.path.join(pasta_saida, "rota_cpp.kmz")
     kml.savekmz(kml_path)
 
