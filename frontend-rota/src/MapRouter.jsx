@@ -6,8 +6,9 @@ import { DOMParser } from '@xmldom/xmldom';
 import * as toGeoJSON from '@tmcw/togeojson';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
-import 'leaflet.fullscreen';
+import 'leaflet-polylinedecorator';
 import 'leaflet.fullscreen/Control.FullScreen.css';
+import 'leaflet.fullscreen';
 
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -27,9 +28,13 @@ function FlyToLocation({ center }) {
 function AddFullscreenControl() {
   const map = useMap();
   useEffect(() => {
-    const control = L.control.fullscreen();
-    map.addControl(control);
-    return () => map.removeControl(control);
+    if (L.control.fullscreen) {
+      const control = L.control.fullscreen();
+      map.addControl(control);
+      return () => map.removeControl(control);
+    } else {
+      console.warn('L.control.fullscreen não está disponível');
+    }
   }, [map]);
   return null;
 }
@@ -40,85 +45,37 @@ function ResetViewButton({ center }) {
     const control = L.control({ position: 'topleft' });
     control.onAdd = function () {
       const btn = L.DomUtil.create('button', 'leaflet-bar');
-      btn.innerHTML = 'Resetar';
+      btn.innerHTML = 'Centralizar';
       btn.style.padding = '4px';
       btn.style.cursor = 'pointer';
       btn.onclick = () => map.setView(center, 15);
       return btn;
     };
+    console.log(center, 'a')
     control.addTo(map);
     return () => control.remove();
   }, [map, center]);
   return null;
 }
 
+
 function smoothPolyline(coords) {
   const smooth = [];
   for (let i = 1; i < coords.length; i++) {
     const [lat1, lon1] = coords[i - 1];
     const [lat2, lon2] = coords[i];
+    if (
+      [lat1, lon1, lat2, lon2].some(v => isNaN(v))
+    ) continue;
     smooth.push([lat1, lon1]);
     const midLat = (lat1 + lat2) / 2;
     const midLon = (lon1 + lon2) / 2;
     smooth.push([midLat, midLon]);
   }
-  smooth.push(coords[coords.length - 1]);
-  return smooth;
-}
-
-function DirectionArrows({ positions }) {
-  const map = useMap();
-  const [zoomLevel, setZoomLevel] = useState(map.getZoom());
-
-  useEffect(() => {
-    const handleZoom = () => setZoomLevel(map.getZoom());
-    map.on('zoomend', handleZoom);
-    return () => map.off('zoomend', handleZoom);
-  }, [map]);
-
-  useEffect(() => {
-    if (!positions.length || !L?.Symbol?.arrowHead || !L?.polylineDecorator) return;
-
-    const segments = splitIntoSegments(positions, 4);
-    const decorators = [];
-
-    segments.forEach((segment, i) => {
-      const colors = ['blue', 'green', 'orange', 'red'];
-      const color = colors[i % colors.length];
-
-      const decorator = L.polylineDecorator(L.polyline(segment), {
-        patterns: [
-          {
-            offset: 12,
-            repeat: Math.max(10, 80 - zoomLevel * 5),
-            symbol: L.Symbol.arrowHead({
-              pixelSize: 10,
-              polygon: false,
-              pathOptions: { stroke: true, color },
-            }),
-          },
-        ],
-      });
-
-      decorator.addTo(map);
-      decorators.push(decorator);
-    });
-
-    return () => {
-      decorators.forEach(d => map.removeLayer(d));
-    };
-  }, [positions, zoomLevel]);
-
-  return null;
-}
-
-function splitIntoSegments(arr, count) {
-  const length = Math.floor(arr.length / count);
-  const segments = [];
-  for (let i = 0; i < count; i++) {
-    segments.push(arr.slice(i * length, (i + 1) * length + 1));
+  if (coords.length > 0) {
+    smooth.push(coords[coords.length - 1]);
   }
-  return segments;
+  return smooth;
 }
 
 export default function MapaComRota({ kmzUrl }) {
@@ -154,7 +111,14 @@ export default function MapaComRota({ kmzUrl }) {
           return [];
         });
 
-        const latLngCoords = coords.map(([lon, lat]) => [lat, lon]);
+        const latLngCoords = coords
+          .map(c => c.slice(0, 2))
+          .filter(c => c.length === 2 && !isNaN(c[0]) && !isNaN(c[1]))
+          .map(([lon, lat]) => [lat, lon]);
+
+        console.log("Raw coords:", coords);
+        console.log("LatLng coords:", latLngCoords);
+
         setRotaCoords(smoothPolyline(latLngCoords));
       })
       .catch(err => console.error('Erro ao ler KMZ:', err));
@@ -211,7 +175,6 @@ export default function MapaComRota({ kmzUrl }) {
           {rotaCoords.length > 0 && (
             <>
               <Polyline positions={rotaCoords} color="blue" />
-              <DirectionArrows positions={rotaCoords} />
             </>
           )}
           {recordedPath.length > 1 && <Polyline positions={recordedPath} color="red" />}
