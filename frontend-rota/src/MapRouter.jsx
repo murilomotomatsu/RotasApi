@@ -11,10 +11,11 @@ import 'leaflet.fullscreen/Control.FullScreen.css';
 import 'leaflet.fullscreen';
 
 delete L.Icon.Default.prototype._getIconUrl;
+const basePath = import.meta.env.BASE_URL || '';
 L.Icon.Default.mergeOptions({
-  iconRetinaUrl: '/RotasApi/leaflet/marker-icon-2x.png',
-  iconUrl: '/RotasApi/leaflet/marker-icon.png',
-  shadowUrl: '/RotasApi/leaflet/marker-shadow.png',
+  iconRetinaUrl: `${basePath}leaflet/marker-icon-2x.png`,
+  iconUrl: `${basePath}leaflet/marker-icon.png`,
+  shadowUrl: `${basePath}leaflet/marker-shadow.png`,
 });
 
 function FlyToLocation({ center }) {
