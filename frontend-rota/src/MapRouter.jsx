@@ -1,22 +1,34 @@
-// /components/MapaComRota.jsx
-import { useEffect, useState } from 'react';
+// /components/MapaComRotaOpenRoute.jsx
+import { useEffect, useState, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Polyline, useMap } from 'react-leaflet';
 import JSZip from 'jszip';
 import { DOMParser } from '@xmldom/xmldom';
 import * as toGeoJSON from '@tmcw/togeojson';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
-import 'leaflet-polylinedecorator';
 import 'leaflet.fullscreen/Control.FullScreen.css';
 import 'leaflet.fullscreen';
+import 'leaflet-polylinedecorator';
 
-delete L.Icon.Default.prototype._getIconUrl;
-const basePath = import.meta.env.BASE_URL || '';
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: `${basePath}leaflet/marker-icon-2x.png`,
-  iconUrl: `${basePath}leaflet/marker-icon.png`,
-  shadowUrl: `${basePath}leaflet/marker-shadow.png`,
-});
+
+const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImZkOTM1MDMzNDgxYTQwZTQ5YzQxMThmNmRmMTJjNzMxIiwiaCI6Im11cm11cjY0In0=';
+
+async function fetchRouteFromORS(start, end) {
+  const response = await fetch('https://api.openrouteservice.org/v2/directions/driving-car/geojson', {
+    method: 'POST',
+    headers: {
+      'Authorization': ORS_API_KEY,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      coordinates: [start, end]
+    })
+  });
+
+  if (!response.ok) throw new Error('Erro ao buscar rota ORS');
+  const data = await response.json();
+  return data.features[0].geometry.coordinates.map(([lon, lat]) => [lat, lon]);
+}
 
 function FlyToLocation({ center }) {
   const map = useMap();
@@ -33,8 +45,6 @@ function AddFullscreenControl() {
       const control = L.control.fullscreen();
       map.addControl(control);
       return () => map.removeControl(control);
-    } else {
-      console.warn('L.control.fullscreen não está disponível');
     }
   }, [map]);
   return null;
@@ -52,7 +62,6 @@ function ResetViewButton({ center }) {
       btn.onclick = () => map.setView(center, 15);
       return btn;
     };
-    console.log(center, 'a')
     control.addTo(map);
     return () => control.remove();
   }, [map, center]);
@@ -60,37 +69,13 @@ function ResetViewButton({ center }) {
 }
 
 
-function smoothPolyline(coords) {
-  const smooth = [];
-  for (let i = 1; i < coords.length; i++) {
-    const [lat1, lon1] = coords[i - 1];
-    const [lat2, lon2] = coords[i];
-    if (
-      [lat1, lon1, lat2, lon2].some(v => isNaN(v))
-    ) continue;
-    smooth.push([lat1, lon1]);
-    const midLat = (lat1 + lat2) / 2;
-    const midLon = (lon1 + lon2) / 2;
-    smooth.push([midLat, midLon]);
-  }
-  if (coords.length > 0) {
-    smooth.push(coords[coords.length - 1]);
-  }
-  return smooth;
-}
-
-export default function MapaComRota({ kmzUrl }) {
+export default function MapaComRotaOpenRoute({ kmzUrl }) {
   const [userLocation, setUserLocation] = useState(null);
   const [rotaCoords, setRotaCoords] = useState([]);
   const [tracking, setTracking] = useState(false);
   const [recordedPath, setRecordedPath] = useState([]);
 
-  useEffect(() => {
-    navigator.geolocation.getCurrentPosition(
-      (pos) => setUserLocation([pos.coords.latitude, pos.coords.longitude]),
-      (err) => alert('Erro ao obter localização: ' + err.message)
-    );
-  }, []);
+  const mapRef = useRef();
 
   useEffect(() => {
     if (!kmzUrl) return;
@@ -101,69 +86,75 @@ export default function MapaComRota({ kmzUrl }) {
         const kmlFile = Object.keys(zip.files).find(f => f.endsWith('.kml'));
         return zip.files[kmlFile].async('string');
       })
-      .then(kmlString => {
+      .then(async kmlString => {
         const parser = new DOMParser();
         const kmlDom = parser.parseFromString(kmlString, 'text/xml');
         const geojson = toGeoJSON.kml(kmlDom);
 
-        const coords = geojson.features.flatMap(f => {
+        const rawCoords = geojson.features.flatMap(f => {
           if (f.geometry.type === 'LineString') return f.geometry.coordinates;
           if (f.geometry.type === 'MultiLineString') return f.geometry.coordinates.flat();
           return [];
         });
 
-        const latLngCoords = coords
-          .map(c => c.slice(0, 2))
-          .filter(c => c.length === 2 && !isNaN(c[0]) && !isNaN(c[1]))
-          .map(([lon, lat]) => [lat, lon]);
+        const latLngs = rawCoords
+          .map(([lon, lat]) => [lat, lon])
+          .filter(([lat, lon]) => !isNaN(lat) && !isNaN(lon));
 
-        console.log("Raw coords:", coords);
-        console.log("LatLng coords:", latLngCoords);
+        const fullRoute = [];
+        for (let i = 0; i < latLngs.length - 1; i++) {
+          try {
+            const route = await fetchRouteFromORS([latLngs[i][1], latLngs[i][0]], [latLngs[i + 1][1], latLngs[i + 1][0]]);
+            fullRoute.push(...route);
+          } catch (err) {
+            console.error(`Erro ao calcular rota ${i}:`, err);
+          }
+        }
 
-        setRotaCoords(smoothPolyline(latLngCoords));
+        setRotaCoords(fullRoute);
+        localStorage.setItem('rotaCoords', JSON.stringify(fullRoute));
       })
       .catch(err => console.error('Erro ao ler KMZ:', err));
   }, [kmzUrl]);
 
   useEffect(() => {
-    if (!tracking) return;
     const id = navigator.geolocation.watchPosition(
       (pos) => {
         const latlng = [pos.coords.latitude, pos.coords.longitude];
-        setRecordedPath(prev => [...prev, latlng]);
+        setUserLocation(latlng);
+        if (tracking) setRecordedPath(prev => [...prev, latlng]);
       },
-      (err) => console.error('Erro ao gravar localização:', err),
+      (err) => console.error('Erro ao rastrear localização:', err),
       { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
     );
-
     return () => navigator.geolocation.clearWatch(id);
   }, [tracking]);
 
   return (
     <div style={{ height: '500px', position: 'relative', marginTop: '2rem' }}>
-      <button
-        onClick={() => setTracking(prev => !prev)}
-        style={{
-          position: 'absolute',
-          bottom: 10,
-          right: 10,
-          zIndex: 1000,
-          padding: '10px 15px',
-          background: tracking ? 'red' : 'green',
-          color: 'white',
-          border: 'none',
-          borderRadius: 5,
-          cursor: 'pointer'
-        }}
-      >
-        {tracking ? 'Parar' : 'Iniciar'}
-      </button>
+      <div style={{ position: 'absolute', bottom: 10, right: 10, zIndex: 1000 }}>
+        <button
+          onClick={() => setTracking(prev => !prev)}
+          style={{
+            marginBottom: 8,
+            padding: '10px 15px',
+            background: tracking ? 'red' : 'green',
+            color: 'white',
+            border: 'none',
+            borderRadius: 5,
+            cursor: 'pointer'
+          }}
+        >
+          {tracking ? 'Parar' : 'Iniciar'}
+        </button>
+      </div>
 
       {userLocation && (
         <MapContainer
+          ref={mapRef}
           center={userLocation}
           zoom={15}
-          style={{ height: '100%', width: '100%' }}
+          style={{ height: '500px', width: '100%' }}
         >
           <AddFullscreenControl />
           <ResetViewButton center={userLocation} />
@@ -176,8 +167,10 @@ export default function MapaComRota({ kmzUrl }) {
           {rotaCoords.length > 0 && (
             <>
               <Polyline positions={rotaCoords} color="blue" />
+              <Marker position={rotaCoords[0]} icon={L.icon({ iconUrl: 'https://maps.google.com/mapfiles/ms/icons/green-dot.png' })} />
             </>
           )}
+
           {recordedPath.length > 1 && <Polyline positions={recordedPath} color="red" />}
         </MapContainer>
       )}
