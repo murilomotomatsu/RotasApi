@@ -1,4 +1,4 @@
-// App.jsx
+// Histórico global a partir do App.jsx
 import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import Maps from './assets/maps.svg';
@@ -6,42 +6,70 @@ import Sheets from './assets/sheets.svg';
 import Kmz from './assets/kmz.svg';
 import MapaComRota from './MapRouter';
 import { messaging, getToken, onMessage } from './firebase';
+import Login from './components/Login';
+import HistoricoRotas from './components/HistoricoRotas';
 import './App.css';
 
 export default function App() {
   const [lat, setLat] = useState('');
   const [raio, setRaio] = useState('');
+  const [ssvNome, setSsvNome] = useState('');
   const [resposta, setResposta] = useState(null);
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [userEmail, setUserEmail] = useState(null);
+  const [perfil, setPerfil] = useState(null);
+  const [mostrarHistorico, setMostrarHistorico] = useState(false);
   const progressInterval = useRef(null);
   const hasRegisteredRef = useRef(false);
 
   useEffect(() => {
     if (hasRegisteredRef.current) return;
     hasRegisteredRef.current = true;
-
     onMessage(messaging, (payload) => {
       alert(payload.notification?.title + '\n' + payload.notification?.body);
     });
 
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register(`${import.meta.env.BASE_URL}firebase-messaging-sw.js`)
+      const swPath = `${import.meta.env.BASE_URL}firebase-messaging-sw.js`;
+      navigator.serviceWorker.register(swPath)
         .then((registration) => {
-          getToken(messaging, {
+          return getToken(messaging, {
             vapidKey: 'BEb8lSDu8z9f_ejV670IU_9gl9m7RpSKMwei-A1J9m4juMgj9gxzujJxM1PycsJxeMXJNph6CVzlKy61Q88YbKs',
             serviceWorkerRegistration: registration
-          }).then((currentToken) => {
-            if (currentToken) {
-              localStorage.setItem('fcm_token', currentToken);
-            } else {
-              console.warn('Nenhum token disponível');
-            }
           });
+        })
+        .then((currentToken) => {
+          if (currentToken) {
+            localStorage.setItem('fcm_token', currentToken);
+          } else {
+            console.warn('Nenhum token disponível');
+          }
+        })
+        .catch((err) => {
+          console.error('Erro ao registrar o service worker:', err);
         });
     }
-  }, []); 
+  }, []);
 
+  useEffect(() => {
+    const storedPerfil = localStorage.getItem('perfil');
+    if (storedPerfil) {
+      try {
+        const parsed = JSON.parse(storedPerfil);
+        setPerfil(parsed);
+        if (parsed.email) setUserEmail(parsed.email);
+      } catch {
+        alert('Deslogado')
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (perfil) {
+      localStorage.setItem('perfil', JSON.stringify(perfil));
+    }
+  }, [perfil]);
 
   const startFakeProgress = () => {
     let current = 0;
@@ -79,6 +107,15 @@ export default function App() {
       });
       const { job_id } = data;
       pollJob(job_id);
+
+      const novoSSV = {
+        nome: ssvNome,
+        coordenadas: lat_lon,
+        raio: raio
+      };
+      const atualizado = { ...perfil, ssvs: [...(perfil?.ssvs || []), novoSSV] };
+      setPerfil(atualizado);
+
     } catch (error) {
       alert('Erro ao iniciar geração de rota');
       stopFakeProgress();
@@ -103,10 +140,28 @@ export default function App() {
     }, 2000);
   };
 
+  if (!userEmail && !perfil) return <Login onLogin={(email) => {
+    setUserEmail(email);
+    const perfilInicial = {
+      email,
+      rotasFeitas: [],
+      ssvs: [],
+      anotacoes: {}
+    };
+    setPerfil(perfilInicial);
+  }} />;
+
   return (
     <main>
+      <button onClick={() => setMostrarHistorico(!mostrarHistorico)} style={{ position: 'absolute', top: 10, right: 10, padding: 10, background: '#222', color: '#fff', borderRadius: 5 }}>
+        ☰ 
+      </button>
+
+      {mostrarHistorico && <HistoricoRotas rotas={perfil?.rotasFeitas || []} />}
+
       <h1 className="h1">TechRoutes</h1>
       <form onSubmit={handleSubmit} className="flex">
+        <input type="text" value={ssvNome} onChange={(e) => setSsvNome(e.target.value)} placeholder="Nome do SSV" required />
         <input type="text" step="any" value={lat} onChange={(e) => setLat(e.target.value)} placeholder="Latitude, longitude" required />
         <input type="number" step="any" value={raio} onChange={(e) => setRaio(e.target.value)} placeholder="Raio em metros" required />
         <button type="submit">Gerar Rota</button>
@@ -126,23 +181,23 @@ export default function App() {
             alt="Rota"
             style={{ maxWidth: '100%', height: '20%', borderRadius: '8px', margin: '1rem' }}
           />
-          <a href={`https://rotasapi-dfed.onrender.com${resposta.csv_url}`} target="_blank" rel="noopener noreferrer" >
-            Baixar CSV
-            <img src={Sheets} alt="Sheets" style={{ width: '10%', margin: '10px 10px -3%' }} />
-          </a>
-          <a href={`https://rotasapi-dfed.onrender.com${resposta.kmz_url}`} target="_blank" rel="noopener noreferrer" >
-            Baixar KMZ
-            <img src={Kmz} alt="KMZ" style={{ width: '10%', margin: '10px 10px -3%' }} />
-          </a>
           {resposta.kmz_url && (
-            <MapaComRota kmzUrl={`https://rotasapi-dfed.onrender.com${resposta.kmz_url}`} />
+            <MapaComRota kmzUrl={`https://rotasapi-dfed.onrender.com${resposta.kmz_url}`} teste={ssvNome} />
           )}
-          {resposta.google_maps_urls?.map((link, i) => (
-            <a key={i} href={link} target="_blank" rel="noopener noreferrer" >
-              Trecho {i + 1}
-              <img src={Maps} alt="Maps" style={{ width: '10%', margin: '10px 10px -3%' }} />
+          <div style={{ display: 'flex', flexDirection: 'row', gap: '5' }}>
+            <a href={`https://rotasapi-dfed.onrender.com${resposta.csv_url}`} target="_blank" rel="noopener noreferrer">
+              <img src={Sheets} alt="Sheets" style={{ width: '100%' }} />
             </a>
-          ))}
+            <a href={`https://rotasapi-dfed.onrender.com${resposta.kmz_url}`} target="_blank" rel="noopener noreferrer">
+              <img src={Kmz} alt="KMZ" style={{ width: '100%' }} />
+            </a>
+            {resposta.google_maps_urls?.map((link, i) => (
+              <a key={i} href={link} target="_blank" rel="noopener noreferrer">
+                {i + 1}
+                <img src={Maps} alt="Maps" style={{ width: '100%' }} />
+              </a>
+            ))}
+          </div>
         </div>
       )}
     </main>

@@ -1,12 +1,13 @@
 {
   "name": "frontend-rota",
+  "base": "/RotasApi/",
   "homepage": "https://murilomotomatsu.github.io/RotasApi",
   "private": true,
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
+    "dev": "vite --config vite.config.dev.js",
+    "build": "vite build --config vite.config.prod.js",
     "lint": "eslint .",
     "preview": "vite preview",
     "deploy": "gh-pages -d dist"

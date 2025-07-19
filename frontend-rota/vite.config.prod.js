@@ -4,6 +4,7 @@ import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
   base: '/RotasApi/',
+  publicDir: 'public',
   plugins: [
     react(),
     VitePWA({
@@ -31,7 +32,4 @@ export default defineConfig({
       }
     })
   ],
-  optimizeDeps: {
-    include: ['leaflet.fullscreen'] // <- Adicionado para corrigir CJS compatibilidade
-  }
 });
