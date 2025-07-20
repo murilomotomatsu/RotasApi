@@ -1,1 +1,1 @@
-if('serviceWorker' in navigator) {window.addEventListener('load', () => {navigator.serviceWorker.register('/RotasApi/firebase-messaging-sw.js', { scope: '/RotasApi/' })})}
+if('serviceWorker' in navigator) {window.addEventListener('load', () => {navigator.serviceWorker.register('/RotasApi/sw.js', { scope: '/RotasApi/' })})}
