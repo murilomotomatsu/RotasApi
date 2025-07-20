@@ -1,4 +1,3 @@
-// Histórico global a partir do App.jsx
 import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import Maps from './assets/maps.svg';
@@ -8,9 +7,7 @@ import MapaComRota from './MapRouter';
 import Login from './components/Login';
 import HistoricoRotas from './components/HistoricoRotas';
 import './App.css';
-import { messaging, getToken } from './firebase';
-
-
+import { db } from './firebase';
 
 export default function App() {
   const [lat, setLat] = useState('');
@@ -23,29 +20,6 @@ export default function App() {
   const [perfil, setPerfil] = useState(null);
   const [mostrarHistorico, setMostrarHistorico] = useState(false);
   const progressInterval = useRef(null);
-  const hasRegisteredRef = useRef(false);
-
-  useEffect(() => {
-    if (hasRegisteredRef.current) return;
-    hasRegisteredRef.current = true;
-
-    if ('serviceWorker' in navigator) {
-      const swPath = `${window.location.origin}${import.meta.env.BASE_URL}firebase-messaging-sw.js`;
-      console.log(swPath)
-      navigator.serviceWorker.register(swPath)
-
-        .then((currentToken) => {
-          if (currentToken) {
-            localStorage.setItem('fcm_token', currentToken);
-          } else {
-            console.warn('Nenhum token disponível');
-          }
-        })
-        .catch((err) => {
-          console.error('Erro ao registrar o service worker:', err);
-        });
-    }
-  }, []);
 
   useEffect(() => {
     const storedPerfil = localStorage.getItem('perfil');
@@ -55,7 +29,7 @@ export default function App() {
         setPerfil(parsed);
         if (parsed.email) setUserEmail(parsed.email);
       } catch {
-        alert('Deslogado')
+        alert('Deslogado');
       }
     }
   }, []);
@@ -93,13 +67,12 @@ export default function App() {
 
     try {
       const lat_lon = lat.replace(/\s+/g, '');
-      const token = localStorage.getItem('fcm_token');
 
       const { data } = await axios.post('https://rotasapi-dfed.onrender.com/rota', {
         lat_lon,
         raio_metros: parseFloat(raio),
-        fcm_token: token
       });
+
       const { job_id } = data;
       pollJob(job_id);
 
@@ -111,7 +84,11 @@ export default function App() {
       const atualizado = { ...perfil, ssvs: [...(perfil?.ssvs || []), novoSSV] };
       setPerfil(atualizado);
 
+      const ref = doc(db, 'users', userEmail);
+      await updateDoc(ref, { ssvs: atualizado.ssvs });
+
     } catch (error) {
+      console.log(error)
       alert('Erro ao iniciar geração de rota');
       stopFakeProgress();
       setLoading(false);
@@ -135,12 +112,12 @@ export default function App() {
     }, 2000);
   };
 
-  if (!userEmail && !perfil) return <Login onLogin={(email) => {
+  if (!userEmail && !perfil) return <Login onLogin={(email, ssvs) => {
     setUserEmail(email);
     const perfilInicial = {
       email,
       rotasFeitas: [],
-      ssvs: [],
+      ssvs: ssvs || [],
       anotacoes: {}
     };
     setPerfil(perfilInicial);
