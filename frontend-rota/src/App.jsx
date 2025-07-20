@@ -5,10 +5,12 @@ import Maps from './assets/maps.svg';
 import Sheets from './assets/sheets.svg';
 import Kmz from './assets/kmz.svg';
 import MapaComRota from './MapRouter';
-import { messaging, getToken, onMessage } from './firebase';
 import Login from './components/Login';
 import HistoricoRotas from './components/HistoricoRotas';
 import './App.css';
+import { messaging, getToken } from './firebase';
+
+
 
 export default function App() {
   const [lat, setLat] = useState('');
@@ -26,19 +28,12 @@ export default function App() {
   useEffect(() => {
     if (hasRegisteredRef.current) return;
     hasRegisteredRef.current = true;
-    onMessage(messaging, (payload) => {
-      alert(payload.notification?.title + '\n' + payload.notification?.body);
-    });
 
     if ('serviceWorker' in navigator) {
-      const swPath = `${import.meta.env.BASE_URL}firebase-messaging-sw.js`;
+      const swPath = `${window.location.origin}${import.meta.env.BASE_URL}firebase-messaging-sw.js`;
+      console.log(swPath)
       navigator.serviceWorker.register(swPath)
-        .then((registration) => {
-          return getToken(messaging, {
-            vapidKey: 'BEb8lSDu8z9f_ejV670IU_9gl9m7RpSKMwei-A1J9m4juMgj9gxzujJxM1PycsJxeMXJNph6CVzlKy61Q88YbKs',
-            serviceWorkerRegistration: registration
-          });
-        })
+
         .then((currentToken) => {
           if (currentToken) {
             localStorage.setItem('fcm_token', currentToken);
@@ -154,7 +149,7 @@ export default function App() {
   return (
     <main>
       <button onClick={() => setMostrarHistorico(!mostrarHistorico)} style={{ position: 'absolute', top: 10, right: 10, padding: 10, background: '#222', color: '#fff', borderRadius: 5 }}>
-        ☰ 
+        ☰
       </button>
 
       {mostrarHistorico && <HistoricoRotas rotas={perfil?.rotasFeitas || []} />}
